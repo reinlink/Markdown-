@@ -282,6 +282,12 @@ body.edit-mode #reader {
   border-radius: 0; box-shadow: none; min-width: 0;
 }
 
+/* 编辑模式堆叠排布（手机竖屏 / 窄窗口 / 竖屏电脑窗口）：上预览 · 下编辑。
+   由 JS 按 matchMedia('(max-width: 820px), (orientation: portrait)') 给 body 加 .edit-stacked */
+body.edit-mode.edit-stacked main { flex-direction: column; padding: 84px 0 0; }
+body.edit-mode.edit-stacked #reader { order: 1; width: 100%; height: 50%; max-width: none; border-bottom: 1px solid var(--border-strong); }
+body.edit-mode.edit-stacked #editorPane { order: 2; width: 100%; height: 50%; border-right: 0; box-shadow: none; }
+
 /* 空状态 */
 #empty { min-height: 440px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 8px; }
 .empty-icon {
@@ -624,10 +630,6 @@ body.side-open #sidebar { transform: none; box-shadow: -24px 0 60px rgba(0,0,0,.
   .card { padding: 26px 20px; }
   .doc-actions { margin-left: 0; width: 100%; }
   .drop-inner { padding: 40px 32px; }
-  /* 编辑模式窄屏：上下堆叠 */
-  body.edit-mode main { flex-direction: column; padding: 84px 0 0; }
-  body.edit-mode #editorPane { width: 100%; height: 50%; border-right: 0; border-bottom: 1px solid var(--border-strong); }
-  body.edit-mode #reader { width: 100%; height: 50%; }
 }
 @media (max-width: 460px) {
   .tool-btn#btnFont { display: none; }
@@ -1902,6 +1904,86 @@ window.addEventListener('error', function (e) { window.__errs.push(String(e.mess
     mdEditor.focus();
   });
 
+  /* ---------- 触屏适配（手机/平板）：滑动不弹键盘、长按选词 + 拖动扩展选区 ---------- */
+  function setupTouchEditor() {
+    var touchCtx = { sx: 0, sy: 0, moved: false, holding: false, timer: null, anchor: null };
+    var TOUCH_SLOP = 12, HOLD_MS = 600;
+
+    editorHost.addEventListener('touchstart', function (e) {
+      var t = e.touches && e.touches[0];
+      if (!t) return;
+      touchCtx.sx = t.clientX; touchCtx.sy = t.clientY;
+      touchCtx.moved = false; touchCtx.holding = false; touchCtx.anchor = null;
+      clearTimeout(touchCtx.timer);
+      touchCtx.timer = setTimeout(function () {
+        if (touchCtx.moved || !mdEditor) return;
+        touchCtx.holding = true;
+        var hit = mdEditor.getTargetAtClientPoint(touchCtx.sx, touchCtx.sy);
+        var pos = hit && hit.position;
+        if (!pos) return;
+        var model = mdEditor.getModel();
+        var word = model.getWordAtPosition(pos);
+        if (word) {
+          touchCtx.anchor = { line: pos.lineNumber, col: word.startColumn };
+          mdEditor.setSelection(new monaco.Selection(pos.lineNumber, word.startColumn, pos.lineNumber, word.endColumn));
+          try { if (navigator.vibrate) navigator.vibrate(8); } catch (err) {}
+        } else {
+          mdEditor.setPosition(pos);
+        }
+      }, HOLD_MS);
+    }, { passive: true, capture: true });
+
+    editorHost.addEventListener('touchmove', function (e) {
+      var t = e.touches && e.touches[0];
+      if (!t) return;
+      var dx = t.clientX - touchCtx.sx, dy = t.clientY - touchCtx.sy;
+      if (!touchCtx.moved && (Math.abs(dx) > TOUCH_SLOP || Math.abs(dy) > TOUCH_SLOP)) {
+        touchCtx.moved = true;
+        clearTimeout(touchCtx.timer);
+      }
+      if (touchCtx.holding && touchCtx.anchor && mdEditor) {
+        var hit = mdEditor.getTargetAtClientPoint(t.clientX, t.clientY);
+        var p = hit && hit.position;
+        if (p) {
+          var m = mdEditor.getModel();
+          var line = Math.min(Math.max(1, p.lineNumber), m.getLineCount());
+          var col = Math.min(p.column, m.getLineMaxColumn(line));
+          if (line > touchCtx.anchor.line || (line === touchCtx.anchor.line && col >= touchCtx.anchor.col)) {
+            mdEditor.setSelection(new monaco.Selection(touchCtx.anchor.line, touchCtx.anchor.col, line, col));
+          } else {
+            mdEditor.setSelection(new monaco.Selection(line, col, touchCtx.anchor.line, touchCtx.anchor.col));
+          }
+          if (e.cancelable) e.preventDefault(); /* 选词拖动时阻止页面滚动 */
+        }
+      }
+    }, { passive: false, capture: true });
+
+    editorHost.addEventListener('touchend', function (e) {
+      clearTimeout(touchCtx.timer);
+      var t = e.changedTouches && e.changedTouches[0];
+      if (t) {
+        var dx = t.clientX - touchCtx.sx, dy = t.clientY - touchCtx.sy;
+        var swiped = Math.abs(dx) > TOUCH_SLOP || Math.abs(dy) > TOUCH_SLOP;
+        if (touchCtx.holding || swiped) {
+          /* 长按：拦截 Monaco 的 contextmenu 手势；滑动：拦截 tap 聚焦（不弹键盘） */
+          e.stopPropagation();
+          if (e.cancelable) e.preventDefault();
+        }
+      }
+      touchCtx.holding = false;
+    }, { capture: true });
+
+    editorHost.addEventListener('touchcancel', function () {
+      clearTimeout(touchCtx.timer);
+      touchCtx.holding = false;
+    }, { capture: true });
+
+    editorHost.addEventListener('contextmenu', function (e) {
+      if (touchCtx.holding) e.preventDefault();
+    }, { capture: true });
+  }
+  if (('ontouchstart' in window) || (navigator.maxTouchPoints > 0)) setupTouchEditor();
+
   /* 保存：优先 File System Access API 写回本地，否则下载导出 */
   function saveEdit() {
     var f = currentFile();
@@ -2379,6 +2461,15 @@ window.addEventListener('error', function (e) { window.__errs.push(String(e.mess
   renderSidebar();
   renderReader();
 
+  /* 编辑模式布局：手机竖屏 / 窄窗口 / 竖屏电脑窗口 → 上下堆叠（上预览·下编辑） */
+  var stackedMQ = window.matchMedia('(max-width: 820px), (orientation: portrait)');
+  function updateEditLayout() {
+    document.body.classList.toggle('edit-stacked', stackedMQ.matches);
+  }
+  updateEditLayout();
+  if (stackedMQ.addEventListener) stackedMQ.addEventListener('change', updateEditLayout);
+  else if (stackedMQ.addListener) stackedMQ.addListener(updateEditLayout);
+
   /* MathJax / Mermaid 库为 defer 加载：就绪后补渲染当前文档 */
   window.addEventListener('load', function () {
     if (window.MathJax || window.mermaid) postRender();
@@ -2393,6 +2484,8 @@ window.addEventListener('error', function (e) { window.__errs.push(String(e.mess
     closeSidebar: closeSidebar,
     setTheme: setTheme,
     setFont: setFont,
+    touch: function () { if (typeof setupTouchEditor === 'function') setupTouchEditor(); },
+    stacked: function (on) { document.body.classList.toggle('edit-stacked', !!on); },
     active: function () { return state.active; },
     errors: function () { return window.__errs.slice(); }
   };
