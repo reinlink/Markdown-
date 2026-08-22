@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<title>墨阅 · Markdown 预览</title>
+<title>墨阅解析</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%236366f1%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23a855f7%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2214%22%20fill%3D%22url(%23g)%22%2F%3E%3Ctext%20x%3D%2232%22%20y%3D%2243%22%20font-size%3D%2232%22%20font-family%3D%22sans-serif%22%20font-weight%3D%22700%22%20fill%3D%22%23fff%22%20text-anchor%3D%22middle%22%3E%E5%A2%A8%3C%2Ftext%3E%3C%2Fsvg%3E">
 <script>
 /* 首屏前先定主题，避免闪烁 */
@@ -273,6 +273,43 @@ body.edit-mode main > .card { border-radius: 0; box-shadow: none; }
 }
 /* 拖放落点指示线（内部拖动 / 外部文本拖入的光标预览）用主题色 */
 #editorHost .monaco-editor .dnd-target { border-right-color: var(--accent) !important; }
+/* 触屏：Monaco 隐藏 textarea 不接收触摸（否则滑动/点按会被浏览器原生聚焦弹键盘） */
+#editorHost .monaco-editor textarea { pointer-events: none; }
+/* 触屏长按选择手柄（Android 风格选择滑块） */
+.md-sel-handle {
+  position: absolute; z-index: 120; display: none;
+  width: 26px; height: 26px; margin: -13px 0 0 -13px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--on-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent), 0 2px 10px rgba(0, 0, 0, 0.45);
+  pointer-events: auto; touch-action: none;
+}
+.md-sel-handle.on { display: block; }
+/* mermaid 图表可点击放大（信息多时看大字） */
+.markdown-body .mermaid svg { cursor: zoom-in; }
+/* mermaid 图表放大浮层 */
+.md-zoom-overlay {
+  position: fixed; inset: 0; z-index: 999; display: none;
+  align-items: center; justify-content: flex-start;
+  background: rgba(5, 5, 12, 0.82); backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  padding: 28px; overflow: auto; cursor: zoom-out;
+}
+.md-zoom-overlay.show { display: flex; flex-direction: column; }
+.md-zoom-overlay .md-zoom-box { margin: auto; cursor: default; }
+.md-zoom-overlay svg {
+  display: block; max-width: calc(100vw - 56px); max-height: 88vh;
+  background: #fff; border-radius: 12px; box-shadow: var(--shadow-lg);
+}
+.md-zoom-overlay .md-zoom-close {
+  position: fixed; top: 14px; right: 14px; width: 38px; height: 38px;
+  border-radius: 50%; border: 1px solid var(--border-strong);
+  background: var(--panel-strong); color: var(--text);
+  font-size: 22px; line-height: 1; cursor: pointer;
+  display: grid; place-items: center;
+}
+.md-zoom-overlay .md-zoom-close:hover { background: var(--surface-2); }
 body.edit-mode #reader {
   flex: 0 0 auto;
   width: min(920px, 94vw, calc(100vh * 0.62)); /* 与编辑区同宽，相接处即页面中线 */
@@ -673,10 +710,10 @@ body.side-open #sidebar { transform: none; box-shadow: -24px 0 60px rgba(0,0,0,.
         </button>
       </div>
     </div>
-    <button class="tool-btn" id="btnEdit" title="编辑模式（左编辑 · 右预览，同步滚动）" aria-label="编辑模式">
+    <button class="tool-btn" id="btnEdit" title="编辑模式" aria-label="编辑模式">
       <svg viewBox="0 0 24 24"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17z"/><path d="M13.5 6.5l3 3"/></svg>
     </button>
-    <button class="tool-btn" id="btnSidebar" title="文件列表（侧边栏）" aria-label="打开文件列表">
+    <button class="tool-btn" id="btnSidebar" title="文件列表" aria-label="打开文件列表">
       <svg viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="3"/><path d="M15.5 4.5v15"/><path d="M18.2 8.5h.01M18.2 11.5h.01M18.2 14.5h.01"/></svg>
     </button>
   </nav>
@@ -704,10 +741,10 @@ body.side-open #sidebar { transform: none; box-shadow: -24px 0 60px rgba(0,0,0,.
       <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 12v6M9 15h6"/></svg>
     </div>
     <h1>拖入 Markdown 文件，即刻解析</h1>
-    <p>一次可拖入多份 Markdown 文件（.md / .markdown / .mdown / .mkd）或整个文件夹 · 右上角侧边栏随时切换 · 全部在本地完成，不联网</p>
+    <p>一次可拖入多份 Markdown 文件或整个文件夹 · 右上角文件列表随时切换 · 全程本地化，不联网</p>
     <div class="empty-actions">
       <button class="btn-primary" id="btnBrowse">选择文件</button>
-      <button class="btn-ghost" id="btnBrowseFolder">选择文件夹</button>
+      <button class="btn-primary" id="btnBrowseFolder">选择文件夹</button>
       <button class="btn-ghost" id="btnNewEmpty">新建临时文档</button>
       <button class="btn-ghost" id="btnSample">查看示例文档</button>
     </div>
@@ -1563,7 +1600,7 @@ window.addEventListener('error', function (e) { window.__errs.push(String(e.mess
     errorCard.hidden = !(f && f.err);
     if (!f) {
       brandTitle.textContent = '';
-      document.title = '墨阅 · Markdown 预览';
+      document.title = '墨阅解析';
       /* 没有文件时自动退出编辑模式，返回首页（清空 / 移除最后一个文件等场景） */
       if (typeof isEditMode === 'function' && isEditMode()) {
         document.body.classList.remove('edit-mode');
@@ -1740,6 +1777,10 @@ window.addEventListener('error', function (e) { window.__errs.push(String(e.mess
     mdEditor.onDidChangeModelContent(scheduleEditRender);
     mdEditor.onDidScrollChange(function (e) {
       if (e.scrollTop !== lastEdScrollTop) { lastEdScrollTop = e.scrollTop; syncScroll('edit'); }
+      if (window.__updateSelHandles) window.__updateSelHandles(); /* 触屏选择手柄跟随滚动 */
+    });
+    mdEditor.onDidChangeCursorSelection(function () {
+      if (window.__updateSelHandles) window.__updateSelHandles(); /* 触屏选择手柄跟随选区 */
     });
     /* markdown 不做任何诊断校验：出现任何 marker（红波浪线）立即清掉 */
     if (monaco.editor.onDidChangeMarkers) {
@@ -1904,19 +1945,109 @@ window.addEventListener('error', function (e) { window.__errs.push(String(e.mess
     mdEditor.focus();
   });
 
-  /* ---------- 触屏适配（手机/平板）：滑动不弹键盘、长按选词 + 拖动扩展选区 ---------- */
+  /* ---------- 触屏适配（手机/平板）：滑动不弹键盘、长按选词 + 拖动扩展选区、双选择手柄自定义框选 ---------- */
   function setupTouchEditor() {
-    var touchCtx = { sx: 0, sy: 0, moved: false, holding: false, timer: null, anchor: null };
-    var TOUCH_SLOP = 12, HOLD_MS = 600;
+    var touchCtx = { sx: 0, sy: 0, moved: false, holding: false, timer: null, anchor: null, handleDrag: null };
+    var TOUCH_SLOP = 5, HOLD_MS = 600; /* 手指动过 5px 即视为滑动（微滑也拦截 tap，避免弹键盘） */
+    var handles = null;
+
+    function ensureHandles() {
+      if (handles) return handles;
+      handles = { start: null, end: null };
+      handles.start = document.createElement('div');
+      handles.start.className = 'md-sel-handle md-sel-handle-start';
+      handles.end = document.createElement('div');
+      handles.end.className = 'md-sel-handle md-sel-handle-end';
+      editorHost.appendChild(handles.start);
+      editorHost.appendChild(handles.end);
+      bindHandleDrag('start', handles.start);
+      bindHandleDrag('end', handles.end);
+      return handles;
+    }
+    function bindHandleDrag(kind, el) {
+      el.addEventListener('touchstart', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        clearTimeout(touchCtx.timer);
+        touchCtx.handleDrag = kind;
+      }, { passive: false });
+      el.addEventListener('touchmove', function (e) {
+        if (touchCtx.handleDrag !== kind) return;
+        e.preventDefault();
+        e.stopPropagation();
+        dragHandleTo(kind, e.touches[0].clientX, e.touches[0].clientY);
+      }, { passive: false });
+      el.addEventListener('touchend', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        touchCtx.handleDrag = null;
+      }, { capture: true });
+    }
+    function handlePos(pos) {
+      if (!pos || !mdEditor) return null;
+      var c = mdEditor.getScrolledVisiblePosition(pos);
+      if (!c && mdEditor.getTopForLineNumber) {
+        /* 兜底：行顶坐标 + 按字符宽估算 */
+        var top = mdEditor.getTopForLineNumber(pos.lineNumber);
+        if (top == null) return null;
+        c = { top: top, left: (pos.column - 1) * 8, height: 20 };
+      }
+      if (!c) return null;
+      var base = editorHost.querySelector('.monaco-editor') || editorHost.querySelector('.view-lines');
+      if (!base) return null;
+      var hostRect = editorHost.getBoundingClientRect();
+      var baseRect = base.getBoundingClientRect();
+      return { left: c.left + baseRect.left - hostRect.left, top: c.top + baseRect.top - hostRect.top };
+    }
+    function updateSelHandles() {
+      var sel = mdEditor && mdEditor.getSelection();
+      if (!sel || sel.isEmpty()) {
+        if (handles) {
+          handles.start.classList.remove('on');
+          handles.end.classList.remove('on');
+        }
+        return;
+      }
+      var h = ensureHandles();
+      var a = handlePos({ lineNumber: sel.selectionStartLineNumber, column: sel.selectionStartColumn });
+      var b = handlePos({ lineNumber: sel.positionLineNumber, column: sel.positionColumn });
+      if (!a || !b) return;
+      h.start.style.left = a.left + 'px';
+      h.start.style.top = a.top + 'px';
+      h.end.style.left = b.left + 'px';
+      h.end.style.top = b.top + 'px';
+      h.start.classList.add('on');
+      h.end.classList.add('on');
+    }
+    function dragHandleTo(kind, cx, cy) {
+      if (!mdEditor) return;
+      var hit = mdEditor.getTargetAtClientPoint(cx, cy);
+      var p = hit && hit.position;
+      if (!p) return;
+      var sel = mdEditor.getSelection();
+      if (!sel) return;
+      var m = mdEditor.getModel();
+      var line = Math.min(Math.max(1, p.lineNumber), m.getLineCount());
+      var col = Math.min(p.column, m.getLineMaxColumn(line));
+      if (kind === 'start') {
+        mdEditor.setSelection(new monaco.Selection(line, col, sel.positionLineNumber, sel.positionColumn));
+      } else {
+        mdEditor.setSelection(new monaco.Selection(sel.selectionStartLineNumber, sel.selectionStartColumn, line, col));
+      }
+      updateSelHandles();
+    }
+    /* 供 ensureEditor 的选区/滚动监听调用（setupTouchEditor 与编辑区创建不在同一时刻） */
+    window.__updateSelHandles = updateSelHandles;
 
     editorHost.addEventListener('touchstart', function (e) {
       var t = e.touches && e.touches[0];
       if (!t) return;
       touchCtx.sx = t.clientX; touchCtx.sy = t.clientY;
       touchCtx.moved = false; touchCtx.holding = false; touchCtx.anchor = null;
+      touchCtx.handleDrag = null;
       clearTimeout(touchCtx.timer);
       touchCtx.timer = setTimeout(function () {
-        if (touchCtx.moved || !mdEditor) return;
+        if (touchCtx.moved || touchCtx.handleDrag || !mdEditor) return;
         touchCtx.holding = true;
         var hit = mdEditor.getTargetAtClientPoint(touchCtx.sx, touchCtx.sy);
         var pos = hit && hit.position;
@@ -1926,6 +2057,11 @@ window.addEventListener('error', function (e) { window.__errs.push(String(e.mess
         if (word) {
           touchCtx.anchor = { line: pos.lineNumber, col: word.startColumn };
           mdEditor.setSelection(new monaco.Selection(pos.lineNumber, word.startColumn, pos.lineNumber, word.endColumn));
+          /* 先强制显示手柄（防定位异常时看不到），再精确定位 */
+          var hh = ensureHandles();
+          hh.start.classList.add('on');
+          hh.end.classList.add('on');
+          updateSelHandles();
           try { if (navigator.vibrate) navigator.vibrate(8); } catch (err) {}
         } else {
           mdEditor.setPosition(pos);
@@ -1953,6 +2089,7 @@ window.addEventListener('error', function (e) { window.__errs.push(String(e.mess
           } else {
             mdEditor.setSelection(new monaco.Selection(line, col, touchCtx.anchor.line, touchCtx.anchor.col));
           }
+          updateSelHandles();
           if (e.cancelable) e.preventDefault(); /* 选词拖动时阻止页面滚动 */
         }
       }
@@ -1960,15 +2097,10 @@ window.addEventListener('error', function (e) { window.__errs.push(String(e.mess
 
     editorHost.addEventListener('touchend', function (e) {
       clearTimeout(touchCtx.timer);
-      var t = e.changedTouches && e.changedTouches[0];
-      if (t) {
-        var dx = t.clientX - touchCtx.sx, dy = t.clientY - touchCtx.sy;
-        var swiped = Math.abs(dx) > TOUCH_SLOP || Math.abs(dy) > TOUCH_SLOP;
-        if (touchCtx.holding || swiped) {
-          /* 长按：拦截 Monaco 的 contextmenu 手势；滑动：拦截 tap 聚焦（不弹键盘） */
-          e.stopPropagation();
-          if (e.cancelable) e.preventDefault();
-        }
+      if (touchCtx.holding || touchCtx.moved) {
+        /* 长按：拦截 Monaco 的 contextmenu 手势；滑动（哪怕微滑）：拦截 tap 聚焦（不弹键盘） */
+        e.stopPropagation();
+        if (e.cancelable) e.preventDefault();
       }
       touchCtx.holding = false;
     }, { capture: true });
@@ -1976,6 +2108,7 @@ window.addEventListener('error', function (e) { window.__errs.push(String(e.mess
     editorHost.addEventListener('touchcancel', function () {
       clearTimeout(touchCtx.timer);
       touchCtx.holding = false;
+      touchCtx.handleDrag = null;
     }, { capture: true });
 
     editorHost.addEventListener('contextmenu', function (e) {
@@ -2026,6 +2159,52 @@ window.addEventListener('error', function (e) { window.__errs.push(String(e.mess
     el.replaceWith(pre);
   }
 
+  /* Mermaid 图表点击放大（信息多的图放大看字） */
+  var zoomOverlay = null;
+  function closeZoom() {
+    if (zoomOverlay) zoomOverlay.classList.remove('show');
+  }
+  function zoomMermaid(svg) {
+    if (!zoomOverlay) {
+      zoomOverlay = document.createElement('div');
+      zoomOverlay.className = 'md-zoom-overlay';
+      zoomOverlay.addEventListener('click', function (e) { if (e.target === zoomOverlay) closeZoom(); });
+      document.body.appendChild(zoomOverlay);
+    }
+    var clone = svg.cloneNode(true);
+    /* mermaid 会给 svg 内联 style="max-width:<图宽>px"，会压住放大，先清掉 */
+    try { clone.style.removeProperty('max-width'); } catch (err) {}
+    /* 按 viewBox 等比放大到视口内最大，保证小字也看得清 */
+    var vb = svg.viewBox && svg.viewBox.baseVal;
+    if (vb && vb.width > 0 && vb.height > 0) {
+      var maxW = window.innerWidth - 56, maxH = window.innerHeight * 0.88;
+      var ratio = Math.min(maxW / vb.width, maxH / vb.height, 4);
+      clone.setAttribute('width', Math.max(1, Math.round(vb.width * ratio)));
+      clone.setAttribute('height', Math.max(1, Math.round(vb.height * ratio)));
+    }
+    var box = document.createElement('div');
+    box.className = 'md-zoom-box';
+    box.appendChild(clone);
+    var btn = document.createElement('button');
+    btn.className = 'md-zoom-close';
+    btn.setAttribute('aria-label', '关闭');
+    btn.innerHTML = '&times;';
+    btn.addEventListener('click', closeZoom);
+    zoomOverlay.replaceChildren(box, btn);
+    zoomOverlay.classList.add('show');
+  }
+  function bindMermaidZoom() {
+    /* 事件委托：mermaid 渲染完成后会克隆/替换 svg，逐个绑定会丢监听；绑在 mdBody 上对所有 svg 生效 */
+    if (mdBody.dataset.zoomBound) return;
+    mdBody.dataset.zoomBound = '1';
+    mdBody.addEventListener('click', function (e) {
+      var svg = e.target && e.target.closest ? e.target.closest('.mermaid svg') : null;
+      if (!svg) return;
+      e.stopPropagation();
+      zoomMermaid(svg);
+    });
+  }
+
   function postRender() {
     /* 脚注编号：按文档中的定义顺序填充上标数字 */
     var lis = mdBody.querySelectorAll('.footnotes ol li');
@@ -2052,7 +2231,9 @@ window.addEventListener('error', function (e) { window.__errs.push(String(e.mess
       if (window.mermaid) {
         try {
           mermaid.initialize({ startOnLoad: false, theme: (html.dataset.theme === 'light' ? 'default' : 'dark') });
-          mermaid.run({ nodes: els }).catch(function () {
+          mermaid.run({ nodes: els }).then(function () {
+            bindMermaidZoom(); /* svg 渲染完成后再绑定点击放大 */
+          }).catch(function () {
             els.forEach(fallbackMermaid);
           });
         } catch (e) {
@@ -2062,6 +2243,7 @@ window.addEventListener('error', function (e) { window.__errs.push(String(e.mess
         els.forEach(fallbackMermaid);
       }
     }
+    bindMermaidZoom(); /* 已渲染图表绑定点击放大（含 load 后补渲染的） */
   }
 
   function copyHtml() {
@@ -2382,7 +2564,7 @@ window.addEventListener('error', function (e) { window.__errs.push(String(e.mess
   );
 
   var SAMPLE_MD = [
-    '# 墨阅 · Markdown 预览',
+    '# 墨阅解析',
     '',
     '> 拖入即可解析，无需联网，全部渲染在本地完成。多份文件可在右上角侧边栏中随时切换。',
     '',
